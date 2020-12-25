@@ -13,7 +13,7 @@
 #include <cxxabi.h>
 #endif
 #include <memory>
-
+#include <atomic>
 #include "CPP17.h"
 
 using namespace std;
@@ -337,7 +337,96 @@ void Aggregate_Extensions()
 
 void Mandatory_Copy_Elision_or_Passing_Unmaterialized_Objects()
 {
+    //test 1,
+    {
+        using namespace ns_Mandatory_Copy_Elision_or_Passing_Unmaterialized_Objects;
+        int i = create<int>(42);
+        std::unique_ptr<int> up = create<std::unique_ptr<int>>(new int{42});
+        std::atomic<int> ai = create<std::atomic<int>>(42);
 
+    }
+    {
+        class CopyOnly {
+            public:
+            CopyOnly() {
+            }
+            CopyOnly(int) {
+            }
+            CopyOnly(const CopyOnly&) = default;
+            CopyOnly(CopyOnly&&) = delete; // 显 式delete
+            };
+            struct GetMyStruct 
+            {
+                CopyOnly operator() () {return CopyOnly{};}
+            } ret;
+            CopyOnly result = ret() ;
+            CopyOnly x = 42; // 自 从C++17起OK
+
+    }
+    /*
+        lvalue(左值) 的例子有：
+        • 只含有单个变量、函数或成员的表达式
+        • 只含有字符串字面量的表达式
+        • 内建的一元 * 运算符（解引用运算符）的结果
+        • 一个返回 lvalue(左值) 引用 (type&) 的函数的返回值
+        prvalue(纯右值) 的例子有：
+        • 除字符串字面量和用户自定义字面量之外的字面量组成的表达式
+        • 内建的一元 & 运算符（取地址运算符）的运算结果
+        • 内建的数学运算符的结果
+        • 一个返回值的函数的返回值
+        • 一个 lambda表达式
+        xvalue(到期值) 的例子有：
+        • 一个返回 rvalue(右值) 引用 (type&&) 的函数的返回值（尤其是std::move() 的返回值）
+        • 把一个对象转换为 rvalue(右值) 引用的操作的结果
+        简单来讲：
+        • 所有用作表达式的变量名都是 lvalue(左值)。
+        • 所有用作表达式的字符串字面量是 lvalue(左值)。
+        • 所有其他的字面量（4.2, true, nullptr）是 prvalue(纯右值)。
+        • 所有临时对象（尤其是以值返回的对象）是 prvalue(纯右值)。
+        • std::move() 的结果是一个 xvalue(到期值)
+    */
+   /*
+        C++中的每个表达式都有两种属性，一个是type（类型），另一个就是value category（值类别）。
+        理解值类型体系的关键是现在广义上来说，我们只有两种类型的表达式：
+        • glvaue：描述对象或函数位置的表达式
+        • prvalue：用于初始化的表达式
+        而xvalue可以认为是一种特殊的位置，它代表一个资源可以被回收利用的对象（通常是因为该对象的生命周期
+        即将结束）。
+        C++17引入了一个新的术语：（临时对象的）实质化 (materialization)，目前 prvalue就是一种临时对象。因此，
+        临时对象实质化转换 (temporary materialization conversion) 是一种 prvalue到xvalue的转换。
+        在任何情况下 prvalue出现在需要 glvalue（lvalue或者 xvalue）的地方都是有效的，此时会创建一个临时对象
+        并用该 prvalue来初始化（注意prvalue主要就是用来初始化的值）。然后该prvalue会被临时创建的 xvalue类型的
+        临时对象替换。
+
+        1. 返回值优化（RVO），即通过将返回值所占空间的分配地点从被调用端转移至调用端的手段来避免拷贝操作。返回值优化包括具名返回值优化（NRVO）与无名返回值优化（URVO），两者的区别在于返回值是具名的局部变量还是无名的临时对象。
+        2. 右值拷贝优化，当某一个类类型的临时对象被拷贝赋予同一类型的另一个对象时，通过直接利用该临时对象的方法来避免拷贝操作。
+
+        有identity，也可以移动的表达式为xvalue表达式；
+        有identity，但不能移动的表达式为lvalue表达式；
+        没有identity，但是可以移动的表达式为prvalue表达式；
+        至于没有identity，也不可以移动的表达式，在实际应用中不存在这样的表达式，也没必要有这样的表达式。
+        有identity的表达式，值类别为glvalue；
+        可以移动的表达式，值类别为rvalue。
+
+   */
+   {
+        //值得强调的一点是严格来讲 glvalue(广义左值)、prvalue(纯右值)、xvalue(到期值) 是描述表达式的术语而不是描
+        //述值的术语（这意味着这些术语其实是误称）。例如，一个变量自身并不是左值，只含有这个变量的表达式才是左值
+        class X {
+        };
+        X v;
+        const X c;
+        struct GetMyStruct 
+        {
+            void operator() (const X&) {cout << "X&" << endl;return;}// 接 受 任 何 值 类 型
+            void operator() (X&&) {cout << "X&&" << endl;return;}// 只 接 受prvalue和xvalue， 但 是 相 比 上 边 的 版 本 是 更 好 的 匹 配
+        } f;
+        f(v); // 给 第 一 个f()传 递 了 一 个 可 修 改lvalue
+        f(c); // 给 第 一 个f()传 递 了 不 可 修 改 的lvalue
+        f(X()); // 给 第 二 个f()传 递 了 一 个prvalue
+        f(std::move(v)); // 给 第 二 个f()传 递 了 一 个xvalue
+
+   }
     
 }
 void Lambda_Extensions()

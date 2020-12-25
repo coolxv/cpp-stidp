@@ -5,6 +5,7 @@
 #include<list>
 #include<map>
 #include<tuple>
+#include <utility>
 
 namespace ns_Inline_Variables
 {
@@ -68,4 +69,14 @@ namespace ns_Aggregate_Extensions
     struct AG : std::string, std::complex<T> {
         std::string data;
     };
+}
+
+
+namespace ns_Mandatory_Copy_Elision_or_Passing_Unmaterialized_Objects
+{
+    template <typename T, typename... Args>
+    T create(Args&&... args)
+    {
+        return T{std::forward<Args>(args)...};
+    }
 }
