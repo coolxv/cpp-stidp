@@ -1,19 +1,4 @@
-#include<iostream>
-#include<string>
-#include<complex>
-#include<array>
-#include<list>
-#include<map>
-#include<tuple>
-#include<typeinfo>
-#include<type_traits>
-#include<mutex>
-#include<filesystem>
-#ifndef _MSC_VER
-#include <cxxabi.h>
-#endif
-#include <memory>
-#include <atomic>
+
 #include "CPP17.h"
 
 using namespace std;
@@ -431,16 +416,283 @@ void Mandatory_Copy_Elision_or_Passing_Unmaterialized_Objects()
 }
 void Lambda_Extensions()
 {
+    //C++11引入的 lambda和 C++14引入的泛型 lambda
+    //• 在常量表达式中使用（也就是在编译期间使用）
+    //• 在需要当前对象的拷贝时使用（例如，当在不同的线程中调用 lambda时）
+    //自从 C++17 起，lambda表达式会尽可能的隐式声明 constexpr。
+    //test 1, const lambda
+    {
+        auto squared = [](auto val) { // 自 从C++17起 隐 式constexpr
+            return val*val;
+        };
+        std::array<int, squared(5)> a; // 自 从C++17起OK => std::array<int, 25>
+    }
+
+    {
+        auto squared2 = [](auto val) { // 自 从C++17起 隐 式constexpr
+            static int calls = 0; // OK， 但 会 使 该lambda不 能 成 为constexpr
+            return val*val;
+        };
+        //std::array<int, squared2(5)> a; // ERROR： 在 编 译 期 上 下 文 中 使 用 了 静 态 变 量
+        std::cout << squared2(5) << '\n'; // OK
+    }
+    {
+        auto squared4 = [](auto val) constexpr {
+            //static int calls = 0; // ERROR： 在 编 译 期 上 下 文 中 使 用 了 静 态 变 量
+            return val*val;
+        };
+    }
+    {
+        //一个隐式或显式的 constexpr lambda的函数调用符也是 constexpr。也就是说，如下定义：
+        auto squared = [](int val) { // 从C++17起 隐 式constexpr
+            return val*val;
+        };
+        //将会被转换为如下闭包类型 (closure type)：
+        class CompilerSpecificName {
+        public:
+            constexpr int operator() (int val) const {
+                return val*val;
+            }
+        };
+    }
+
+    //test 2,向 lambda 传递 this 的拷贝
+    {
+        class Data {
+        private:
+            std::string name;
+            public:
+            Data(const std::string& s) : name(s) {
+            }
+            auto startThreadWithCopyOfThis() const {
+                // 开 启 并 返 回 新 线 程， 新 线 程 将 在3秒 后 使 用this：
+                using namespace std::literals;
+                std::thread t([*this] {
+                std::this_thread::sleep_for(1s);
+                std::cout << name << '\n';
+                });
+                return t;
+            }
+        };
+
+        std::thread t;
+        {
+            Data d{"c1"};
+            t = d.startThreadWithCopyOfThis();
+        } // d不 再 有 效
+        t.join();
+                
+    }
+    //test 3,以常量引用捕获
+    {
+        std::vector<int> coll{8, 15, 7, 42};
+        auto printColl = [&coll = std::as_const(coll)] {
+            std::cout << "coll: ";
+            for (int elem : coll) {
+                std::cout << elem << ' ';
+            }
+            std::cout << '\n';
+        };
+
+        printColl();
+    }
 
     
 }
 void New_Attributes_and_Attribute_Features()
 {
+    //test [[nodiscard]], 鼓励编译器在某个函数的返回值未被使用时给出警告。
+    struct B {
+        [[nodiscard]] bool foo(){return true;}
+    };
+    struct D : B {
+        bool foo(){return true;}
+    };
+    struct E : B {
+        [[nodiscard]] bool foo(){return true;}
+    };
+    B b;
+    b.foo(); // 警 告
+    (void)b.foo(); // 没 有 警 告
+    D d;
+    d.foo(); // 没 有 警 告
+    E e;
+    e.foo(); // 警 告
 
-    
+    //test [[maybe_unused]],  可以避免编译器在某个变量未被使用时发出警告。
+    //属性可以应用于类的声明、使用typedef 或者 using 定义的类型、一个变量、一个非静态数据成员、一个函数、一个枚举类型、一个枚举值等场景
+    struct GetMyStruct 
+    {
+        void operator() (int val, [[maybe_unused]] std::string msg)
+        {
+            #ifdef DEBUG
+            cout << msg << endl;
+            #endif
+        }
+    } f;
+    f(1,"hello");
+
+    //test [[fallthrough]] ,可以避免编译器在 switch 语句中某一个标签缺少 break语句时发出警告。
+    int place = 1;
+    switch (place) {
+        case 1:
+            std::cout << "very ";
+            [[fallthrough]];
+        case 2:
+            std::cout << "well\n";
+            break;
+        default:
+            std::cout << "OK\n";
+            break;
+    }
+
 }
 void Other_Language_Features()
 {
+    //嵌套命名空间
+    {
+        ns_Other_Language_Features::Nested_Namespaces::C::print();
+    }
+    //有定义的表达式求值顺序
+    {
+        std::string s = "I heard it even works if you don't believe";
+        s.replace(0,8,"").replace(s.find("even"),4,"sometimes").replace(s.find("you don't"),9,"I");
+        cout << s << endl; // it sometimes works if I believe
+        //
+        int i = 0;
+        cout << ++i << ' ' << --i << endl;
+        /*
+            为了解决这种未定义的问题，C++17 标准重新定义了一些运算符的的求值顺序，因此这些运算符现在有了固
+            定的求值顺序：
+            • 对于运算
+            e1 [ e2 ]
+            e1 . e2
+            e1 .* e2
+            e1 ->* e2
+            e1 << e2
+            e1 >> e2
+            e1现在保证一定会在 e2之前求值，因此求值顺序是从左向右。然而，注意同一个函数调用中的不同参数的计
+            算顺序仍然是未定义的。
+            • 所有的赋值运算
+            e2 = e1
+            e2 += e1
+            e2 *= e1
+            中右侧的 e1现在保证一定会在左侧的 e2之前求值。
+            • 最后，类似于如下的 new表达式
+            new Type(e)
+            中保证内存分配的操作在对 e求值之前发生。新的对象的初始化操作保证在第一次使用该对象之前完成。
+            所有这些保证适用于所有基本类型和自定义类型。
+        */
+    }
+    //更宽松的用整型初始化枚举值的规则
+    {
+        //对于一个有固定底层类型的枚举类型变量，自从 C++17 开始可以用一个整型值直接进行列表初始化。
+        // 指 明 底 层 类 型 的 无 作 用 域 枚 举 类 型
+        enum MyInt1 : char { };
+        MyInt1 i11{42}; // 自 从C++17起OK（C++17以 前ERROR）
+        //MyInt1 i12 = 42; // 仍 然ERROR
+        //MyInt1 i13(42); // 仍 然ERROR
+        //MyInt1 i14 = {42}; // 仍 然ERROR
+        // 带 有 默 认 底 层 类 型 的 有 作 用 域 枚 举
+        enum class Weekday1 { mon, tue, wed, thu, fri, sat, sun };
+        Weekday1 s11{0}; // 自 从C++17起OK（C++17以 前ERROR）
+        //Weekday1 s12 = 0; // 仍 然ERROR
+        //Weekday1 s13(0); // 仍 然ERROR
+        //Weekday1 s14 = {0}; // 仍 然ERROR
+        // 带 有 明 确 底 层 类 型 的 有 作 用 域 枚 举
+        enum class Weekday2 : char { mon, tue, wed, thu, fri, sat, sun };
+        Weekday2 s21{0}; // 自 从C++17起OK（C++17以 前ERROR）
+        //Weekday2 s22 = 0; // 仍 然ERROR
+        //Weekday2 s23(0); // 仍 然ERROR
+        //Weekday2 s24 = {0}; // 仍 然ERROR
+        //对于没有明确底层类型的无作用域枚举类型（没有 class的 enum），你仍然不能使用列表初始化：
+        enum Flag { bit1=1, bit2=2, bit3=4 };
+        //Flag f1{0}; // 仍 然ERROR
+        //注意列表初始化不允许窄化，所以你不能传递一个浮点数：
+        enum MyInt2 : char { };//一个定义新的整数类型的技巧
+        //MyInt2 i25{42.2}; // 仍 然ERROR
+
+    }
+    //修正 auto 类型的列表初始化
+    {
+        int x{42}; // 初 始 化 一 个int
+        //int y{1, 2, 3}; // ERROR
+        auto a{42}; // 现 在 初 始 化 一 个int // 以前初 始 化 一 个std::initializer_list<int>
+        //auto b{1, 2, 3}; // 现 在ERROR //// 以前初 始 化 一 个std::initializer_list<int>
+        //注意当使用 auto 进行拷贝列表初始化（使用了 =）时仍然是初始化一个 std::initializer_list<>：
+        auto c = {42}; // 仍 然 初 始 化 一 个std::initializer_list<int>
+        auto d = {1, 2, 3}; // 仍 然OK： 初 始 化 一 个std::initializer_list<int>
+        //因此，现在直接初始化（没有 =）和拷贝初始化（有 =）之间又有了显著的不同：
+        auto e{42}; // 现 在 初 始 化 一 个int
+        auto f = {42}; // 仍 然 初 始 化 一 个std::initializer_list<int>
+    }
+    //十六进制浮点数字面量
+    {
+        // 初 始 化 浮 点 数
+        std::initializer_list<double> values {
+            0x1p4, // 16
+            0xA, // 10
+            0xAp2, // 40
+            5e0, // 5
+            0x1.4p+2, // 5
+            1e5, // 100000
+            0x1.86Ap+16, // 100000
+            0xC.68p+2, // 49.625
+        };
+        // 分 别 以 十 进 制 和 十 六 进 制 打 印 出 值：
+        for (double d : values) {
+            cout << "dec: " << std::setw(6) << std::defaultfloat << d  << " hex: " << std::hexfloat << d << endl;
+        }
+
+    }
+    //UTF­8 字符字面量
+    {
+        //自从 C++11起，C++就已经支持以 u8 为前缀的 UTF­8 字符串字面量。然而，这个前缀不能用于字符字面量。
+        //在C++17 中，u8'6' 的类型是 char，在 C++20中可能会变为 char8_t，因此这里使用 auto 会更好一些。
+        //C++17 修复了这个问题，所以现在可以这么写：
+        auto c = u8'6'; // UTF-8编 码 的 字 符6
+        cout << c << endl;
+        
+        //对于源码中的字符和字符串字面量，C++标准化了你可以
+        //使用的字符而不是这些字符的值。这些值取决于源码字符集。当编译器为源码生成可执行程序时它使用运行字
+        //符集。源码字符集几乎总是 7 位的 US­ASCII 编码，而运行字符集通常是相同的。
+
+        //字符和字符串字面量现在接受如下前缀：
+        //• u8 用于单字节 US­ASCII 和 UTF­8 编码
+        //• u 用于两字节的 UTF­16 编码
+        //• U 用于四字节的UTF­32 编码
+        // • L用于没有明确编码的宽字符，可能是两个或者四个字节
+    }
+    //异常声明作为类型的一部分
+    {
+        void (*fp)() noexcept; // 指 向 不 抛 异 常 的 函 数 的 指 针
+        fp = ns_Other_Language_Features::fNoexcept; // OK
+        //fp = ns_Other_Language_Features::fMightThrow; // 自 从C++17起ERROR
+        //把一个不会抛出异常的函数赋给一个可能抛出异常的函数指针仍然是有效的：
+        void (*fp2)(); // 指 向 可 能 抛 出 异 常 的 函 数 的 指 针
+        fp2 = ns_Other_Language_Features::fNoexcept; // OK
+        fp2 = ns_Other_Language_Features::fMightThrow; // OK
+        class Base {
+            public:
+            virtual void foo() noexcept;
+        };
+        class Derived : public Base {
+            public:
+            //void foo() override; // ERROR： 不 能 重 载
+        };
+
+    }
+    //单参数 static_assert
+    {
+        ns_Other_Language_Features::C<ns_Other_Language_Features::CC> c;
+    }
+    //预处理条件__has_include
+    {
+        //__has_include 是一个纯粹的预处理指令。所以不能将它用作源码里的条件表达式：
+        //if (__has_include(<filesystem>)) { // ERROR
+        //}
+    }
+
 
     
 }

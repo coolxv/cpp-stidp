@@ -1,11 +1,39 @@
 #pragma once
+#include<iostream>
 #include<string>
+#include<complex>
 #include<array>
-#include<vector>
 #include<list>
 #include<map>
 #include<tuple>
+#include<typeinfo>
+#include<type_traits>
+#include<mutex>
+
+#include<vector>
 #include <utility>
+#include <memory>
+#include <atomic>
+#include <thread>
+#if __has_include(<filesystem>)
+# include <filesystem>
+# define HAS_FILESYSTEM 1
+#elif __has_include(<experimental/filesystem>)
+# include <experimental/filesystem>
+# define HAS_FILESYSTEM 1
+# define FILESYSTEM_IS_EXPERIMENTAL 1
+#elif __has_include("filesystem.hpp")
+# include "filesystem.hpp"
+# define HAS_FILESYSTEM 1
+# define FILESYSTEM_IS_EXPERIMENTAL 1
+#else
+# define HAS_FILESYSTEM 0
+#endif
+
+
+#ifndef _MSC_VER
+#include <cxxabi.h>
+#endif
 
 namespace ns_Inline_Variables
 {
@@ -80,3 +108,66 @@ namespace ns_Mandatory_Copy_Elision_or_Passing_Unmaterialized_Objects
         return T{std::forward<Args>(args)...};
     }
 }
+
+
+namespace ns_New_Attributes_and_Attribute_Features
+{
+    namespace [[deprecated]] DraftAPI {
+
+    }
+    enum class City { 
+        Berlin = 0,
+        NewYork = 1,
+        Mumbai = 2,
+        Bombay [[deprecated]] = Mumbai,
+    };
+}
+
+
+
+namespace ns_Other_Language_Features {
+    namespace Nested_Namespaces::C
+    {
+        void print()
+        {
+            std::cout << "Nested Namespaces" << std::endl;
+        }
+    }
+    //自从 C++17 之后，异常处理声明变成了函数类型的一部分。也就是说，如下的两个函数的类型是不同的：
+    inline void fMightThrow()
+    {
+
+    }
+    inline void fNoexcept() noexcept
+    {
+
+    }
+    //重载一个签名完全相同只有异常声明不同的函数是不允许的（就像不允许重载只有返回值不同的函数一样）：
+    void f33();
+    //void f33(); noexcept; // ERROR
+    void f1();
+    void f2() noexcept;
+    void f3() noexcept(sizeof(int)<4); // 和f1()或f2()的 类 型 相 同
+    void f4() noexcept(sizeof(int)>=4); // 和f3()的 类 型 不 同
+    void f5() throw(); // 和void f5() noexcept等 价 但 已 经 被 废 弃
+    //带参数的动态异常声明不再被支持（自从 C++11起被废弃）：
+    //void f6() throw(std::bad_alloc); // ERROR： 自 从C++17起 无 效
+
+    //单参数 static_assert
+    template<typename T>
+    class C {
+        // 自 从C++11起OK
+        static_assert(std::is_default_constructible<T>::value, "class C: elements must be default-constructible");
+        // 自 从C++17起OK
+        static_assert(std::is_default_constructible_v<T>);
+    };
+
+    class CC {
+
+    };
+
+
+
+    
+}
+
