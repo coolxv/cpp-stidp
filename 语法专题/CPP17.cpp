@@ -5,7 +5,7 @@ using namespace std;
 
 /*****************************************************************
  * 辅助功能
- * 
+ * g++ -std=c++17 CPP17.cpp -lpthread -o CPP17
  * 
  * **************************************************************/
 template <class T>
@@ -32,12 +32,10 @@ type_name()
 
 
 
-/*****************************************************************
- * g++ -std=c++17 CPP17.cpp -lpthread -o CPP17
- * 
- * 
- * **************************************************************/
 
+///////////////////////////////////////////////////
+//// Part 1
+///////////////////////////////////////////////////
 
 void Structured_Bindings()
 {
@@ -692,10 +690,83 @@ void Other_Language_Features()
         //if (__has_include(<filesystem>)) { // ERROR
         //}
     }
-
-
     
 }
+
+///////////////////////////////////////////////////
+//// Part 2
+///////////////////////////////////////////////////
+
+void Class_Template_Argument_Deduction()
+{
+
+    //test 1
+    {
+        //通过使用类模板参数推导 (class template argument deduction)(CTAD)，只要编译器能根据初始值推导出所有模板参数，那么就可以不指明参数。
+        std::complex c1{1.1, 2.2}; // 推 导 出std::complex<double>
+        std::complex c2(2.2, 3.3); // 推 导 出std::complex<double>
+        std::complex c3 = 3.3; // 推 导 出std::complex<double>
+        std::complex c4 = {4.4}; // 推 导 出std::complex<double>
+        //std::complex c5{5, 3.3}; // ERROR： 尝 试 将T推 导 为int和double，推导模板参数时不会使用隐式类型转换。
+
+        ns_Class_Template_Argument_Deduction::MyClass mc("hello");
+    }
+    //test 2
+    {
+        std::vector v1{42}; // 一 个 元 素 的vector<int
+        std::vector v2{v1}; // v2也 是 一 个std::vector<int>
+        std::vector v3(v1); // v3也 是vector<int>
+        std::vector v4 = {v1}; // v4也 是vector<int>
+        auto v5 = std::vector{v1}; // v5也 是vector<int>
+        cout << type_name<decltype(v5)>() << endl;
+        //注意这是花括号初始化总是把列表中的参数作为元素这一规则的一个例外。如果你传递一个只有一个 vector的
+        //初值列来初始化另一个 vector，你将得到一个传入的vector的拷贝。然而，如果用多于一个元素的初值列来初始
+        //化的话就会把传入的参数作为元素并推导出其类型作为模板参数（因为这种情况下无法解释为创建拷贝）：
+        std::vector vv{v1, v2}; // vv是 一 个vector<vector<int>>
+        cout << type_name<decltype(vv)>() << endl;
+        std::vector<int> v{1, 2, 3};
+        auto x1 = ns_Class_Template_Argument_Deduction::make_vector(v, v); // vector<vector<int>>
+        auto x2 = ns_Class_Template_Argument_Deduction::make_vector(v); // vector<int>还 是vector<vector<int>>?
+        cout << type_name<decltype(x1)>() << endl;
+        cout << type_name<decltype(x2)>() << endl;//vector<vector<int>>
+
+    }
+    //test 3
+    {
+        std::vector v{5,1,10,20};
+        ns_Class_Template_Argument_Deduction::CountCalls sc{[](auto x, auto y) { return x > y; }};
+        std::sort(v.begin(), v.end(), // 排 序 区 间
+            std::ref(sc)); // 排 序 准 则
+        std::cout << "sorted with " << sc.count() << " calls\n";
+    }
+
+
+}
+
+void Compile_Time_if()
+{
+    
+}
+
+void Fold_Expressions()
+{
+    
+}
+
+void Dealing_with_Strings_as_Template_Parameters()
+{
+    
+}
+void Dealing_Placeholder_Types_like_auto_as_Template_Parameters()
+{
+    
+}
+void Dealing_Extended_Using_Declarations()
+{
+    
+}
+
+
 int main(int argc, char *argv[])
 {
     // Part 1
@@ -715,7 +786,20 @@ int main(int argc, char *argv[])
     New_Attributes_and_Attribute_Features();
     /// Chapter 8
     Other_Language_Features();
+    
+    
     // Part 2
-
+    /// Chapter 9
+    Class_Template_Argument_Deduction();
+    /// Chapter 10
+    Compile_Time_if();
+    /// Chapter 11
+    Fold_Expressions();
+    /// Chapter 12
+    Dealing_with_Strings_as_Template_Parameters();
+    /// Chapter 13
+    Dealing_Placeholder_Types_like_auto_as_Template_Parameters();
+    /// Chapter 14
+    Dealing_Extended_Using_Declarations();
     return 0;
 }

@@ -9,6 +9,7 @@
 #include<typeinfo>
 #include<type_traits>
 #include<mutex>
+#include<algorithm>
 
 #include<vector>
 #include <utility>
@@ -165,9 +166,41 @@ namespace ns_Other_Language_Features {
     class CC {
 
     };
-
-
-
-    
+   
 }
 
+namespace ns_Class_Template_Argument_Deduction {
+    template<typename T, int SZ>
+    class MyClass {
+    public:
+        MyClass (T(&)[SZ]) {
+        }
+    };
+
+    template<typename... Args>
+    auto make_vector(const Args&... elems) {
+        return std::vector{elems...};
+    }
+
+    template<typename CB>
+    class CountCalls
+    {
+    private:
+        CB callback; // 要 调 用 的 回 调 函 数
+        long calls = 0; // 调 用 的 次 数
+    public:
+        CountCalls(CB cb) : callback(cb) {
+        }
+        template<typename... Args>
+        decltype(auto) operator() (Args&&... args) {
+            ++calls;
+            return callback(std::forward<Args>(args)...);
+        }
+        long count() const {
+            return calls;
+        }
+};
+
+
+
+}
