@@ -699,7 +699,7 @@ void Other_Language_Features()
 
 void Class_Template_Argument_Deduction()
 {
-
+    using namespace ns_Class_Template_Argument_Deduction;
     //test 1
     {
         //通过使用类模板参数推导 (class template argument deduction)(CTAD)，只要编译器能根据初始值推导出所有模板参数，那么就可以不指明参数。
@@ -709,9 +709,9 @@ void Class_Template_Argument_Deduction()
         std::complex c4 = {4.4}; // 推 导 出std::complex<double>
         //std::complex c5{5, 3.3}; // ERROR： 尝 试 将T推 导 为int和double，推导模板参数时不会使用隐式类型转换。
 
-        ns_Class_Template_Argument_Deduction::MyClass mc("hello");
+        MyClass mc("hello");
     }
-    //test 2
+    //test 2 默认以拷贝方式推导
     {
         std::vector v1{42}; // 一 个 元 素 的vector<int
         std::vector v2{v1}; // v2也 是 一 个std::vector<int>
@@ -724,6 +724,7 @@ void Class_Template_Argument_Deduction()
         //化的话就会把传入的参数作为元素并推导出其类型作为模板参数（因为这种情况下无法解释为创建拷贝）：
         std::vector vv{v1, v2}; // vv是 一 个vector<vector<int>>
         cout << type_name<decltype(vv)>() << endl;
+        //对可变参数模板使用类模板参数推导时会发生什么?
         std::vector<int> v{1, 2, 3};
         auto x1 = ns_Class_Template_Argument_Deduction::make_vector(v, v); // vector<vector<int>>
         auto x2 = ns_Class_Template_Argument_Deduction::make_vector(v); // vector<int>还 是vector<vector<int>>?
@@ -731,7 +732,7 @@ void Class_Template_Argument_Deduction()
         cout << type_name<decltype(x2)>() << endl;//vector<vector<int>>
 
     }
-    //test 3
+    //test 3 推导 lambda 的类型
     {
         std::vector v{5,1,10,20};
         ns_Class_Template_Argument_Deduction::CountCalls sc{[](auto x, auto y) { return x > y; }};
@@ -739,30 +740,383 @@ void Class_Template_Argument_Deduction()
             std::ref(sc)); // 排 序 准 则
         std::cout << "sorted with " << sc.count() << " calls\n";
     }
+    // test 4 没有类模板部分参数推导
+    {
+        //不像函数模板，类模板不能只指明一部分模板参数，然后指望编译器去推导剩余的部分参数。甚至使用<> 指明空模板参数列表也是不允许的。
+        C c1(22, 44.3, "hi"); // OK：T1是int，T2是double，T3是const char*
+        C c2(22, 44.3); // OK：T1是int，T2和3是double
+        C c3("hi", "guy"); // OK：T1、T2、T3都 是const char*
+        // 推 导 部 分 参 数
+        //C<string> c4("hi", "my"); // ERROR： 只 有T1显 式 指 明
+        //C<> c5(22, 44.3); // ERROR：T1和T2都 没 有 指 明
+        //C<> c6(22, 44.3, 42); // ERROR：T1和T2都 没 有 指 明
+        // 指 明 所 有 参 数
+        C<string, string, int> c7; // OK：T1、T2是string，T3是int
+        C<int, string> c8(52, "my"); // OK：T1是int，T2、T3是string
+        C<string, string> c9("a", "b", "c"); // OK：T1、T2、T3都 是string
+
+        //不幸的是，不支持部分参数推导意味着一个常见的编码需求并没有得到解决。我们仍然不能简单的使用一个lambda作为关联容器的排序准则或者无序容器的 hash 函数：
+        //std::set<Cust> coll([] (const Cust& x, const Cust& y) { // 仍 然ERROR
+        //    return x.getName() > y.getName();
+        //});
+        //我们仍然必须指明 lambda的类型。例如：
+        auto sortcrit = [] (const Cust& x, const Cust& y) {
+            return x.getName() > y.getName();
+        };
+        std::set<Cust, decltype(sortcrit)> coll(sortcrit); // OK
+                
+    }
+    //test 5 使用类模板参数推导代替快捷函数
+    {
+        //通过使用类模板参数推导，我们可以摆脱已有的几个快捷函数模板，这些快捷函数的作用其实就是根据传入的参数实例化相应的类模板
+        //从另一个角度来看std::make_pair() 也是一个很好的例子，它演示了有时便捷函数的作用不仅仅是推导模板参数。
+        //事实上 std::make_pair() 会使传入的参数退化（在 C++03 中以值传递，自从 C++11起使用特征）。
+        std::vector<int> v;
+        //auto p = std::make_pair(v.begin(), v.end());
+        //std::pair<typename std::vector<int>::iterator, typename std::vector<int>::iterator>  p(v.begin(), v.end());
+        std::pair pp(v.begin(), v.end());
+        std::pair ppp{v.begin(), v.end()};
+    }
+    //test 6 推导指引 使用推导指引强制类型退化
+    {
+        //explicit-说明符(可选) 模板名 ( 形参声明子句 ) -> 简单模板标识 ;		
+        //一般来说，不仅是模板，所有以值传递的参数都会退化，而以引用传递的参数不会退化。退化意味着原生数组会转换为指针，并且顶层的修饰符例如 const 或者引用将会被忽略。
+        //注意构造函数仍然以引用传参。推导指引只和模板参数的推导相关，它与推导出 T1 和T2 之后实际调用的构造函数无关。
+        Pair3 p3 ("hi", "world");
+
+    }
+    //test 7 非模板推导指引
+    {
+        S s1{"hello"}; // OK， 等 同 于S<std::string> s1{"hello"};
+        S s2 = {"hello"}; // OK， 等 同 于S<std::string> s2 = {"hello"};
+        S s3 = S{"hello"}; // OK， 两 个S都 被 推 导 为S<std::string>
+        //注意聚合体需要列表初始化。下面的代码中参数推导能正常工作，但会因为没有使用花括号导致初始化错误：
+        //S s4 = "hello"; // ERROR： 不 能 不 使 用 花 括 号 初 始 化 聚 合 体
+        //S s5("hello"); // ERROR： 不 能 不 使 用 花 括 号 初 始 化 聚 合 体
+    }
+    //test 8 推导指引 VS 构造函数
+    {
+        //。类模板参数推导时会根据重载情况选择最佳匹配的构造函数/推导指引。如果一个构造函数和一个推导指引匹配优先级相同，那么将会优先使用推导指引
+        //在重载规则中，以值传参和以引用传参的匹配度相同的。然而在相同匹配度的情况下将优先使用推导指引。因此，通常会把推导指引定义为以值传参（这样做还有类型退化的优点）。
+    }
+    //test 9 显式推导指引
+    {
+        //SS s1 = {"hello"}; // ERROR（推 导 指 引 被 忽 略， 因 此 是 无 效 的）
+        //直接初始化或者右侧显式推导的方式仍然有效：
+        SS s2{"hello"}; // OK， 等 同 于S<std::string> s2{"hello"};
+        SS s3 = SS{"hello"}; // OK
+        SS s4 = {SS{"hello"}}; // OK
+        //
+        Ptr p1{42}; // 根 据 推 导 指 引 推 导 出Ptr<int*>
+        Ptr p2 = 42; // 根 据 构 造 函 数 推 导 出Ptr<int>
+        int i = 42;
+        Ptr p3{&i}; // 根 据 推 导 指 引 推 导 出Ptr<int**>
+        Ptr p4 = &i; // 根 据 构 造 函 数 推 导 出Ptr<int*>
+
+    }
+    //test 10 聚合体的推导指引
+    {
+        //在没有推导指引的情况下尝试使用类模板参数推导会导致错误：
+        //A i1{42}; // ERROR
+        //A s1("hi"); // ERROR
+        A s2{"hi"}; // ERROR
+        //A s3 = "hi"; // ERROR
+        A s4 = {"hi"}; // ERROR
+        //
+        A<int> i2{42};
+        A<std::string> s5 = {"hi"};
+
+    }
+    //test 11 标准库推导指引
+    {
+        //pair、tuple、map、array、迭代器、 的推导指引
+        //智能指针没有推导指引
+    }
 
 
 }
 
 void Compile_Time_if()
 {
-    
+    using namespace ns_Compile_Time_if;
+    //test 1
+    {
+        std::cout << asString(42) << '\n';
+        std::cout << asString(std::string("hello")) << '\n';
+        std::cout << asString("hello") << '\n';
+    }
+    //test 2 
+    {
+        //编译期 if 影响返回值类型
+        //短路求值（当 && 左侧为 false 时停止求值，当 || 左侧为 true 时停止求值）。
+        //编译期if 在实例化时并不短路求值。如果后边的条件的有效性依赖于前边的条件，那你需要把条件进行嵌套。
+        auto x2 = bar(10);
+        //constexpr auto x2 = bar("hi"); // 编 译 期ERROR
+    }
+    //test 3
+    {
+        //decltype(auto) 不能推导为void（因为void 是不完全类型）
+        cout << call([](int a, int b){return a+b;},1,2) << endl;
+        //• 重载函数的版本遵循最佳匹配语义。
+        //• 编译期 if 的版本遵循最先匹配语义。
+        std::vector a = {1, 2, 3, 4, 5};
+        auto it = a.begin();
+        advance_test(it, 2);
+        //cout << "it = "<< it << endl;
+
+    }
+    //test 4 带初始化的编译期 if 语句
+    {
+        if constexpr(const int a = 1; a > 1) {
+            cout << "a" << endl; // OK
+        }
+        else {
+            cout << "b" << endl; // OK
+        }  
+    }
+    //test 5 在模板之外使用编译期if
+    {
+        //if constexpr 可以在任何函数中使用，而并非仅限于模板。只要条件表达式是编译期的，并且可以转换成bool 类型。
+        //然而，在普通函数里使用时 then和 else部分的所有语句都必须有效，即使有可能被丢弃。
+        if constexpr(std::numeric_limits<char>::is_signed) {
+            cout << "a" << endl; // OK
+        }
+        else {
+            cout << "b" << endl; // OK
+        }
+    }
 }
 
 void Fold_Expressions()
 {
+    using namespace ns_Fold_Expressions;
+    //折叠表达式的出现让我们不必再用递归实例化模板的方式来处理参数包。
+    //• 一元左折叠
+    //( … op args )
+    //将会展开为：((arg1 op arg2) op arg3) op …
+    //• 一元右折叠
+    //( args op … )
+    //将会展开为：arg1 op (arg2 op … (argN­1 op argN))
+    // • 二元左折叠
+    // ( value op … op args )
+    // 将会展开为：(((value op arg1) op arg2) op arg3) op …
+    // • 二元右折叠
+    // ( args op … op value )
+    // 将会展开为：arg1 op (arg2 op … (argN op value))
+    //test 1
+    {
+        int val = 9;
+        cout << foldSum(47, 11, val, -1) << endl;
+        cout << foldSum(std::string("hello"), "world", "!") << endl;
+    }
+
+    //test 2 处理空参数包
+    {
+        // 当使用折叠表达式处理空参数包时，将遵循如下规则：
+        // • 如果使用了 && 运算符，值为 true。
+        // • 如果使用了 || 运算符，值为 false。
+        // • 如果使用了逗号运算符，值为 void()。
+        // • 使用所有其他的运算符，都会引发格式错误
+        print1("hello", "world", "!");
+        print2("hello", "world", "!");
+        print3("hello", "world", "!");
+    }
+    //test 3 支持的运算符 折叠函数调用
+    {
+        //对除了.、->、[] 之外的所有二元运算符使用折叠表达式。
+        combinedHashValue (std::string("Hi"), std::string("World"), 42);
+        const char *a = "Hi";
+        const char *b = "World";
+        combinedHashValue (a, b, 42);
+        //combinedHashValue ("Hi", "World", 42);//error: use of deleted function ‘std::hash<char [3]>::hash()’
+        struct Customer
+        {
+            std::string fn;
+            std::string ln;
+            std::string v;
+            
+            std::string getFirstname() const {return fn;}
+            std::string getLastname() const {return ln;}
+            std::string getValue() const {return v;}
+        };
+        struct CustomerHash
+        {
+            std::size_t operator() (const Customer& c) const {
+                return combinedHashValue(c.getFirstname(), c.getLastname(), c.getValue());
+            }
+        };
+        std::unordered_set<Customer, CustomerHash> coll;
+        std::unordered_map<Customer, std::string, CustomerHash> map;
+    }
+    //test 4 支持的运算符 折叠基类的函数调用
+    {
+        MultiBase<A, B, C> mb;
+        mb.print();
+    }
+    //test 5 使用折叠表达式处理类型
+    {
+        cout << IsHomogeneous<int, char, decltype(42)>::value << endl;
+        cout << isHomogeneous(43, -1, "hello", nullptr) << endl;
+    }
+
     
 }
 
+extern const char hello[] = "Hello World!"; // 外 部 链 接
+const char hello11[] = "Hello World!"; // 内 部 链 接
+static const char hello1717[] = "Hello World!"; // 内 部 链 接
 void Dealing_with_Strings_as_Template_Parameters()
 {
-    
+    using namespace ns_Dealing_with_Strings_as_Template_Parameters;
+    //test 1
+    {
+
+        Message<hello> msg; // OK（所 有C++标 准）
+        Message<hello11> msg11; // 自 从C++11起OK
+        static const char hello17[] = "Hello World!"; // 无 链 接
+        Message<hello17> msg17; // 自 从C++17起OK
+        Message<hello1717> msg1717; // 自 从C++17起OK
+        //Message<"hi"> msgError; // ERROR
+
+    }
+    //test 2
+    {
+        int num;
+        static int pnum;
+        //A<&num> a; // not have static storage duration
+        //A<pNum(&num)> b; // 
+        A<&pnum> a; // 自 从C++11起OK
+        A<pNum(&pnum)> b; // C++17之 前ERROR， 现 在OK
+    }
 }
 void Dealing_Placeholder_Types_like_auto_as_Template_Parameters()
 {
+    using namespace ns_Dealing_Placeholder_Types_like_auto_as_Template_Parameters;
+    //自从 C++17 起，你可以使用占位符类型（auto 和 decltype(auto)）作为非类型模板参数的类型。
+    //这意味着我们可以写出泛型代码来处理不同类型的非类型模板参数。
+    //test 1 
+    {
+        S<42> s1; // OK：S中N的 类 型 是int
+        S<'a'> s2; // OK：S中N的 类 型 是char
+        //S<2.5> s3; // ERROR： 模 板 参 数 的 类 型 不 能 是double
+        A a2{"hello"}; // OK， 推 导 为A<const char, 6>，N的 类 型 是std::size_t
+        //
+        std::array<double, 10> sa1;
+        A a1{sa1}; // OK， 推 导 为A<double, 10>，N的 类 型 是std::size_t
+        //
+        HeteroValueList<1, 2, 3> vals1; // OK
+        HeteroValueList<1, 'a', true> vals2; // OK
+        HomoValueList<1, 2, 3> vals3; // OK
+        //HomoValueList<1, 'a', true> vals4; // ERROR
+
+    }
+    //test 2 字符和字符串模板参数
+    {
+        //我们仍然可以像之前一样调用：
+        std::string s{"world"};
+        print(7.5, "hello", s); // 打 印 出：7.5 hello world
+        //然而，通过把分隔符 Sep 参数化，我们也可以显示指明另一个字符作为分隔符：
+        print<'-'>(7.5, "hello", s); // 打 印 出：7.5-hello-world
+        //甚至，因为使用了 auto，我们甚至可以传递被声明为无链接的字符串字面量作为分隔符：
+        static const char sep[] = ", ";
+        print<sep>(7.5, "hello", s); // 打 印 出：7.5, hello, world
+        //另外，我们也可以传递任何其他可以用作模板参数的类型：
+        print<-11>(7.5, "hello", s); // 打 印 出：7.5-11hello-11world
+
+    }
+    //test 3 定义元编程常量
+    {
+        using i = constant<42>;
+        using c = constant<'x'>;
+        using b = constant<true>;
+        cout << i::value << c::value << b::value << endl;
+    }
+
+
+    //test 4 使用 auto 作为变量模板的参数
+    {
+        arr<int, 5>[0] = 17;
+        arr<int, 5>[3] = 42;
+        arr<int, 5u>[1] = 11;
+        arr<int, 5u>[3] = 33;
+        std::cout << "arr<int, 5>: ";
+        for (const auto& elem : arr<int, 5>) {
+        std::cout << elem << ' ';
+        }
+        std::cout << "\narr<int, 5u>: ";
+        for (const auto& elem : arr<int, 5u>) {
+        std::cout << elem << ' ';
+        }
+        std::cout << std::endl;
+        //
+        auto v1 = val<5>; // v1 == 5，v1的 类 型 为int
+        auto v2 = val<true>; // v2 == true，v2的 类 型 为bool
+        auto v3 = val<'a'>; // v3 == 'a'，v3的 类 型 为char
+        //这里解释了发生了什么：
+        cout << std::is_same_v<decltype(val<5>), int> << endl;// 返 回false
+        cout << std::is_same_v<decltype(val<5>), const int> << endl; // 返 回true
+        cout << std::is_same_v<decltype(v1), int> << endl; // 返 回true（因 为auto会 退 化）
+
+    }
+    //test 5 使用 decltype(auto)模板参数
+    {
+        //如果使用 decltype(auto) 来推导表达式 (expressions)而不是变量名，那么推导的结果将依赖于表达式的值类型：
+        //• prvalue（例如临时变量）推导出 type
+        //• lvalue（例如有名字的对象）推导出 type&
+        //• xvalue（例如用 std::move() 标记的对象）推导出 type&&
+        static const int c = 42;
+        static int v = 42;
+
+        Sp<c> s1; // N的 类 型 推 导 为const int 42
+        Sp<(c)> s2; // N的 类 型 推 导 为const int&，N是c的 引 用
+        s1.printN();
+        s2.printN();
+        Sp<(v)> s3; // N的 类 型 推 导 为int&，N是v的 引 用
+        v = 77;
+        s3.printN(); // 打 印 出：N: 77
+
+
+    }
     
 }
 void Dealing_Extended_Using_Declarations()
 {
+    using namespace ns_Dealing_Extended_Using_Declarations;
+    //test 1
+    {
+        class Base {
+            public:
+                void a(){};
+                void b(){};
+                void c(){};
+            };
+            class Derived : private Base {
+            public:
+                using Base::a, Base::b, Base::c;
+            };
+    }
+    //test 2
+    {
+        auto twice = overload {
+            [](std::string& s) { s += s; },
+            [](auto& v) { v *= 2; }
+        };
+
+        int i = 42;
+        twice(i);
+        std::cout << "i: " << i << '\n'; // 打 印 出：84
+        std::string s = "hi";
+        twice(s);
+        std::cout << "s: " << s << '\n'; // 打 印 出：hihi
+
+    }
+    //test 3
+    {
+        using MultiISB = Multi<int, std::string, bool>;
+        MultiISB m1 = 42;
+        MultiISB m2 = std::string("hello");
+        MultiISB m3 = true;
+    }
     
 }
 
