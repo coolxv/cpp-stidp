@@ -1,25 +1,28 @@
 #pragma once
-#include<iostream>
-#include<string>
-#include<complex>
-#include<array>
-#include<set>
-#include<list>
-#include<map>
-#include<unordered_set>
-#include<unordered_map>
-#include<tuple>
-#include<typeinfo>
-#include<type_traits>
-#include<mutex>
-#include<algorithm>
-#include<functional>
-#include<iterator>
-#include<vector>
+#include <iostream>
+#include <string>
+#include <complex>
+#include <array>
+#include <set>
+#include <list>
+#include <map>
+#include <unordered_set>
+#include <unordered_map>
+#include <tuple>
+#include <typeinfo>
+#include <type_traits>
+#include <mutex>
+#include <algorithm>
+#include <numeric>
+#include <functional>
+#include <iterator>
+#include <vector>
 #include <utility>
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <new>
+#include <memory_resource>
 #if __has_include(<filesystem>)
 # include <filesystem>
 # define HAS_FILESYSTEM 1
@@ -39,6 +42,9 @@
 #ifndef _MSC_VER
 #include <cxxabi.h>
 #endif
+#include <assert.h>
+#include <malloc.h>
+#include <charconv>
 
 namespace ns_Inline_Variables
 {
@@ -514,5 +520,75 @@ namespace ns_Dealing_Extended_Using_Declarations{
         using Base<Types>::Base...;
 
     };
+
+}
+
+
+namespace ns_new_and_delete_with_Over_Aligned_Data
+{
+    // 主 模 板
+    template<typename, typename = std::void_t<>>
+    struct HasDelete : std::false_type {
+    };
+    // 部 分 特 化 版 （可 能 被SFINE'd away）：
+    template<typename T>
+    struct HasDelete<T, std::void_t<decltype(T::operator delete(nullptr))>> : std::true_type {
+    };
+
+    template<typename TP, typename... Args>
+    void placementDelete(TP* tp, Args&&... args)
+    {
+        // 析 构 对 象：
+        tp->~TP();
+        // 使 用 正 确 的delete操 作 符 释 放 内 存：
+        if constexpr(HasDelete<TP>::value) {
+            TP::operator delete(tp, std::forward<Args>(args)...);
+        } else {
+            ::operator delete(tp, std::forward<Args>(args)...);
+        }
+    }
+
+}
+
+namespace ns_Improvements_for_Implementing_Generic_Code
+{
+    template<typename Callable, typename... Args>
+    void call(Callable&& op, Args&&... args)
+    {
+        std::invoke(std::forward<Callable>(op), // 调 用 传 入 的 可 调 用 对 象
+                    std::forward<Args>(args)...); // 以 传 入 的 其 他 参 数 为 参 数
+    }
+
+    template<typename Callable, typename... Args>
+    decltype(auto) call_ret(Callable&& op, Args&&... args)
+    {
+        return std::invoke(std::forward<Callable>(op), // 调 用 传 入 的 可 调 用 对 象
+                            std::forward<Args>(args)...); // 以 传 入 的 其 他 参 数 为 参 数
+    }
+    void print(const std::vector<int>& coll)
+    {
+        std::cout << "elems: ";
+        for (const auto& elem : coll) {
+            std::cout << elem << ' ';
+        }
+        std::cout << '\n';
+    }
+
+    template<typename T>
+    struct IsLargerThanInt : std::bool_constant<(sizeof(T) > sizeof(int))> {
+    };
+
+
+    // 主 模 板：
+    template<typename, typename = std::void_t<>>
+    struct HasVarious : std::false_type {
+    };
+    // 部 分 特 化 （may be SFINAE'd away）：
+    template<typename T>
+    struct HasVarious<T, std::void_t<decltype(std::declval<T>().begin()), typename T::difference_type, typename T::iterator>>:std::true_type {
+    };
+
+
+
 
 }

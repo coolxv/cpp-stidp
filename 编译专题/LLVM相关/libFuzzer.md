@@ -26,6 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 # windows环境安装
 - [安装](https://releases.llvm.org/download.html)Pre-Built Binaries: Windows (64-bit) 
+- [Windows snapshot builds](https://llvm.org/builds/)
 - 区别导入库和静态库：lib /list clang_rt.fuzzer-x86_64.lib
 - 示例程序
 ```

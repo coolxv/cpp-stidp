@@ -31,6 +31,101 @@ type_name()
 }
 
 
+class TrackNew {
+ private:
+  static inline int numMalloc = 0;    // num malloc calls
+  static inline size_t sumSize = 0;   // bytes allocated so far
+  static inline bool doTrace = false; // tracing enabled
+  static inline bool inNew = false;   // don't track output inside new overloads
+ public:
+  static void reset() {               // reset new/memory counters
+    numMalloc = 0;
+    sumSize = 0;
+  }
+
+  static void trace(bool b) {         // enable/disable tracing
+    doTrace = b;
+  }
+
+  // implementation of tracked allocation:
+  static void* allocate(std::size_t size, std::size_t align,
+                        const char* call) {
+    // track and trace the allocation:
+    ++numMalloc;
+    sumSize += size;
+    void* p;
+    if (align == 0) {
+      p = std::malloc(size);
+    }
+    else {
+#ifdef _MSC_VER
+      p = _aligned_malloc(size, align);     // Windows API
+#else
+      p = std::aligned_alloc(align, size);  // C++17 API
+#endif
+    }
+    if (doTrace) {
+      // DON'T use std::cout here because it might allocate memory
+      // while we are allocating memory (core dump at best)
+      printf("#%d %s ", numMalloc, call);
+      printf("(%zu bytes, ", size);
+      if (align > 0) {
+        printf("%zu-byte aligned) ", align);
+      }
+      else {
+        printf("def-aligned) ");
+      }
+      printf("=> %p (total: %zu bytes)\n", (void*)p, sumSize);
+    }
+    return p;
+  }
+
+  static void status() {              // print current state
+    printf("%d allocations for %zu bytes\n", numMalloc, sumSize);
+  }
+};
+
+[[nodiscard]]
+void* operator new (std::size_t size) {
+  return TrackNew::allocate(size, 0, "::new");
+}
+
+[[nodiscard]]
+void* operator new (std::size_t size, std::align_val_t align) {
+  return TrackNew::allocate(size, static_cast<size_t>(align),
+                            "::new aligned");
+}
+
+[[nodiscard]]
+void* operator new[] (std::size_t size) {
+  return TrackNew::allocate(size, 0, "::new[]");
+}
+
+[[nodiscard]]
+void* operator new[] (std::size_t size, std::align_val_t align) {
+  return TrackNew::allocate(size, static_cast<size_t>(align),
+                            "::new[] aligned");
+}
+
+// ensure deallocations match:
+void operator delete (void* p) noexcept {
+  std::free(p);
+}
+void operator delete (void* p, std::size_t) noexcept {
+  ::operator delete(p);
+}
+void operator delete (void* p, std::align_val_t) noexcept {
+#ifdef _MSC_VER
+  _aligned_free(p);  // Windows API
+#else
+  std::free(p);      // C++17 API
+#endif
+}
+void operator delete (void* p, std::size_t,
+                               std::align_val_t align) noexcept {
+  ::operator delete(p, align);
+}
+
 
 
 ///////////////////////////////////////////////////
@@ -1120,10 +1215,478 @@ void Dealing_Extended_Using_Declarations()
     
 }
 
+/// Chapter 15
+void std_optional()
+{
+
+}
+/// Chapter 16
+void std_variant()
+{
+
+}
+/// Chapter 17
+void std_any()
+{
+
+}
+/// Chapter 18
+void std_byte()
+{
+
+}
+/// Chapter 19
+void std_string_views()
+{
+
+}
+/// Chapter 20
+void std_filesystem()
+{
+
+}
+
+/// Chapter 21
+void Extensions_of_Type_Traits()
+{
+
+}
+/// Chapter 22
+void Parallel_STL_Algorithms()
+{
+
+}
+/// Chapter 23
+void New_STL_Algorithms_in_Detail()
+{
+
+}
+/// Chapter 24
+void Substring_and_Subsequence_Searchers()
+{
+
+}
+/// Chapter 25
+void Other_Utility_Functions_and_Algorithms()
+{
+
+}
+/// Chapter 26
+void Container_and_String_Extensions()
+{
+
+}
+/// Chapter 27
+void Multi_Threading_and_Concurrency()
+{
+
+}
+/// Chapter 28
+void Other_Small_Library_Features_and_Modifications()
+{
+
+}
+
+/// Chapter 29
+void Polymorphic_Memory_Resources()
+{
+    //• 使用标准库提供的标准内存资源
+    //• 定义自定义内存资源
+    //• 为自定义类型提供内存资源
+    //test 1
+    {
+        //为一个 pmr vector 尝试把它的分配器传播给它的元素，当元素并不使用多态分配器（也就是类型
+        //为std::string）时这会失败。然而，std::pmr::string 类型会使用多态分配器，因此传播不会失败。
+
+        TrackNew::reset();
+        // 在 栈 上 分 配 一 些 内 存：
+        std::array<std::byte, 200000> buf;
+        // 将 它 用 作vector和strings的 初 始 内 存 池：
+        std::pmr::monotonic_buffer_resource pool{buf.data(), buf.size()};
+        std::pmr::vector<std::pmr::string> coll{&pool};
+        for (int i = 0; i < 1000; ++i) {
+            coll.emplace_back("just a non-SSO string");
+        }
+        TrackNew::status();
+
+    }
+    //test 2
+    {
+        //通过这种方式，你可以轻易的使用内存池，你可以在只分配一次（可以在栈上也可以在堆上）然后在每一个新任务里（服务请求、事件、处理数据文件等等）都复用这块内存。
+        // 在 栈 上 分 配 一 些 内 存：
+        std::array<std::byte, 200000> buf;
+        for (int num : {1000, 2000, 500, 2000, 3000, 50000, 1000}) {
+            std::cout << "-- check with " << num << " elements:\n";
+            TrackNew::reset();
+            std::pmr::monotonic_buffer_resource pool{buf.data(), buf.size()};
+            std::pmr::vector<std::pmr::string> coll{&pool};
+            for (int i = 0; i < num; ++i) {
+                coll.emplace_back("just a non-SSO string");
+            }
+            TrackNew::status();
+        }
+    }
+    //test 3
+    {
+        std::pmr::synchronized_pool_resource pool;
+        std::pmr::map<long, std::pmr::string> coll{&pool};
+        for (int i = 0; i < 10; ++i) {
+            std::string s{"Customer" + std::to_string(i)};
+            coll.emplace(i, s);
+        }
+        // 打 印 出 元 素 的 距 离：
+        for (const auto& elem : coll) {
+            static long long lastVal = 0;
+            long long val = reinterpret_cast<long long>(&elem);
+            std::cout << "diff: " << (val-lastVal) << '\n';
+            lastVal = val;
+        }
+    }
+    //test 4
+    {
+        // 使 用 栈 上 的 内 存 并 且 不 用 堆 作 为 备 选 项：
+        std::array<std::byte, 200000> buf;
+        std::pmr::monotonic_buffer_resource pool{buf.data(), buf.size(), std::pmr::null_memory_resource()};
+        // 然 后 分 配 过 量 的 内 存
+        std::pmr::unordered_map<long, std::pmr::string> coll{&pool};
+        try {
+            for (int i = 0; i < buf.size(); ++i) {
+                std::string s{"Customer" + std::to_string(i)};
+                coll.emplace(i, s);
+            }
+        }
+        catch (const std::bad_alloc& e) {
+            std::cerr << "BAD ALLOC EXCEPTION: " << e.what() << '\n';
+        }
+        std::cout << "size: " << coll.size() << '\n';
+    }
+    //test 5
+    {
+        class Tracker : public std::pmr::memory_resource
+        {
+            private:
+                std::pmr::memory_resource *upstream; // 被 包 装 的 内 存 资 源
+                std::string prefix{};
+            public:
+                // 包 装 传 入 的 或 者 默 认 的 资 源：
+                explicit Tracker(std::pmr::memory_resource *us = std::pmr::get_default_resource()) : upstream{us} {
+                }
+                explicit Tracker(std::string p, std::pmr::memory_resource *us = std::pmr::get_default_resource()) : prefix{std::move(p)}, upstream{us} {
+                }
+            private:
+                void* do_allocate(size_t bytes, size_t alignment) override {
+                    std::cout << prefix << "allocate " << bytes << " Bytes\n";
+                    void* ret = upstream->allocate(bytes, alignment);
+                    return ret;
+                }
+                void do_deallocate(void* ptr, size_t bytes, size_t alignment) override {
+                    std::cout << prefix << "deallocate " << bytes << " Bytes\n";
+                    upstream->deallocate(ptr, bytes, alignment);
+                }
+                bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
+                    // 是 同 一 个 对 象？
+                    if (this == &other)
+                    return true;
+                    // 是 相 同 的 类 型 并 且prefix和upstream都 相 等？
+                    auto op = dynamic_cast<const Tracker*>(&other);
+                    return op != nullptr && op->prefix == prefix && upstream->is_equal(other);
+                }
+        };
+
+        // 追 踪 不 会 释 放 内 存、 按 照 块 分 配 内 存 的 池 （初 始 大 小 为10k） 的 内 存 分 配 情 况：
+        Tracker track1{"keeppool:"};
+        std::pmr::monotonic_buffer_resource keeppool{10000, &track1};
+        {
+            Tracker track2{" syncpool:", &keeppool};
+            std::pmr::synchronized_pool_resource pool{&track2};
+            for (int j = 0; j < 100; ++j) {
+                std::pmr::vector<std::pmr::string> coll{&pool};
+                coll.reserve(100);
+                for (int i = 0; i < 100; ++i) {
+                    coll.emplace_back("just a non-SSO string");
+                }
+                if (j == 2){
+                    std::cout << "--- third iteration done\n";
+                }
+            } // 底 层 的 池 收 到 了 释 放 操 作， 但 不 会 释 放 内 存
+            // 到 此 没 有 释 放 任 何 内 存
+            std::cout << "--- leave scope of pool\n";
+        }
+        std::cout << "--- leave scope of keeppool\n";
+
+        //test 6
+        {
+            //只有当源对象和目的对象的分配器可交换时才会发生 move。这也是多态分配器类型调用移动构造函
+            //数的条件（新的对象会拷贝分配器）。然而，如果使用了不可交换的分配器（例如这里前缀不同的追踪器）或者
+            //类型不同的分配器（这里std::string 的分配器是默认分配器），那么内存会被拷贝。
+
+            Tracker track1{"track1:"};
+            Tracker track2{"track2:"};
+            std::pmr::string s1{"more than 15 chars", &track1}; // 用track1分 配
+            std::pmr::string s2{std::move(s1), &track1}; // move（同 一 个 追 踪 器）
+            std::pmr::string s3{std::move(s2), &track2}; // 拷 贝 （前 缀 不 同）
+            std::pmr::string s4{std::move(s3)}; // move（分 配 器 被 拷 贝）
+            std::string s5{std::move(s4)}; // 拷 贝 （其 他 的 分 配 器）
+        }
+        //test 7
+        {
+            // 支 持 多 态 分 配 器 的 顾 客 类 型
+            // 分 配 器 存 储 在 字 符 串 成 员 中
+            class PmrCustomer
+            {
+                private:
+                    std::pmr::string name; // 也 可 以 用 来 存 储 分 配 器
+                public:
+                    using allocator_type = std::pmr::polymorphic_allocator<char>;
+                    // 初 始 化 构 造 函 数：
+                    PmrCustomer(std::pmr::string n, allocator_type alloc = {}) : name{std::move(n), alloc} {
+                    }
+                    // 带 有 分 配 器 的 移 动， 构 造 函 数：
+                    PmrCustomer(const PmrCustomer& c, allocator_type alloc) : name{c.name, alloc} {
+                    }
+                    PmrCustomer(PmrCustomer&& c, allocator_type alloc) : name{std::move(c.name), alloc} {
+                    }
+                    // setter/getter：
+                    void setName(std::pmr::string s) {
+                        name = std::move(s);
+                    }
+                    std::pmr::string getName() const {
+                        return name;
+                    }
+                    std::string getNameAsString() const {
+                        return std::string{name};
+                }
+            };
+
+            Tracker tracker;
+            std::pmr::vector<PmrCustomer> coll(&tracker);
+            coll.reserve(100); // 使 用tracker分 配
+            PmrCustomer c1{"Peter, Paul & Mary"}; // 使 用get_default_resource()分 配
+            coll.push_back(c1); // 使 用vector的 分 配 器(tracker)分 配
+            coll.push_back(std::move(c1)); // 拷 贝 （分 配 器 不 可 交 换）
+            for (const auto& cust : coll) {
+                std::cout << cust.getName() << '\n';
+            }
+
+        }
+
+
+    }
+
+
+
+}
+/// Chapter 30
+void new_and_delete_with_Over_Aligned_Data()
+{
+    using namespace ns_new_and_delete_with_Over_Aligned_Data;
+    //注意对齐数必须是 2 的幂，并且指定任何小于默认情况的对齐数都会导致错误。1 然而，C++11和C++14 中超对
+    //齐数据的动态/堆分配 (dynamic/heap allocation)并没有被正确处理。使用运算符 new创建超对齐类型将会默认忽
+    //略要求的对齐数，这意味着一些 64字节对齐的类型可能只有 8 字节或 16字节对齐。
+    //这个问题在 C++17 中被修复。新的行为现在提供带对齐数的 new 重载来允许你为超对齐数据提供自己的实现。
+    struct alignas(32) MyType32 {
+        int i;
+        char c;
+        std::string s[4];
+#if 0 //超对齐在CPP17以前需要如下实现
+        static void* operator new (std::size_t size) {
+            // 调 用new获 取 默 认 对 齐 的 数 据：
+            std::cout << "MyType32::new() with size " << size << '\n';
+            return ::operator new(size);
+        }
+        static void* operator new (std::size_t size, std::align_val_t align) {
+            // 调 用new获 取 超 对 齐 数 据：
+            std::cout << "MyType32::new() with size " << size
+            << " and alignment " << static_cast<std::size_t>(align)
+            << '\n';
+            return ::operator new(size, align);
+        }
+        static void operator delete (void* p) {
+            // 调 用delete释 放 默 认 对 齐 的 数 据：
+            std::cout << "MyType32::delete() without alignment\n";
+            ::operator delete(p);
+        }
+        static void operator delete (void* p, std::size_t size) {
+            MyType32::operator delete(p); // 使 用 无 大 小 的delete
+        }
+        static void operator delete (void* p, std::align_val_t align) {
+            // 调 用delete释 放 超 对 齐 的 数 据：
+            std::cout << "MyType::32::delete() with alignment\n";
+            ::operator delete(p, align);
+        }
+        static void operator delete (void* p, std::size_t size, std::align_val_t align) {
+            MyType32::operator delete(p, align); // 使 用 无 大 小 的delete
+        }
+
+// 定 义 数 组 需 要 的new[]和delete[]
+#endif
+
+    };
+    MyType32* p = new MyType32; // 自 从C++17起 保 证 是32字 节 对 齐
+    MyType32* pp = new MyType32{}; // 对 齐 并 初 始 化
+    delete p;
+    delete pp;
+    //在Windows上，通常使用_aligned_malloc()，它要求使用_aligned_free()
+    //在Linux上，如果可能的话会使用 C11函数 aligned_alloc()来分配内存, linux的memalign()。在这种情况下，可以使用 free() 释放内存
+    std::string* ps = new(std::align_val_t{64}) std::string; // 64字 节 对 齐
+    MyType32* pm = new(std::align_val_t{64}) MyType32{}; // 64字 节 对 齐
+    placementDelete(ps, std::align_val_t{64});
+    placementDelete(pm, std::align_val_t{64});
+    //ps->~basic_string(); // 析 构 对 象
+    //::operator delete(p, std::align_val_t{64}); // 释 放 内 存
+    //pm->~MyType32(); // 析 构 对 象
+    //MyType32::operator delete(pm, std::align_val_t{64}); // 释 放 内 存
+    // 如果你不知道类型的详细情况，对于一个类型 T 的对象你可以调用下列函数之一：
+    // void T::operator delete(void* ptr, std::size_t size, std::align_val_t align);
+    // void T::operator delete(void* ptr, std::align_val_t align);
+    // void T::operator delete(void* ptr, std::size_t size);
+    // void T::operator delete(void* ptr);
+    // void ::operator delete(void* ptr, std::size_t size, std::align_val_t align);
+    // void ::operator delete(void* ptr, std::align_val_t align);
+    // void ::operator delete(void* ptr, std::size_t size);
+    // void ::operator delete(void* ptr);
+
+    // 注意你不能使用 typedef 或者 using 声明定义别名：
+    // using MyType64 = alignas(64) MyType32; // ERROR
+    // typedef alignas(64) MyType32 MyType64; // ERROR
+
+}
+
+
+/// Chapter 31
+void std_to_chars_and_std_from_chars()
+{
+    //test 1
+    {
+        const char* str = "12 monkeys";
+        int value;
+        if (auto [ptr, ec] = std::from_chars(str, str+10, value); ec == std::errc{}) {
+            cout << value << endl;
+        }
+    }
+    //test 2
+    {
+        int value = 42;
+        char str[10]{0};
+        if (auto [ptr, ec] = std::to_chars(str, str+10, value); ec != std::errc{}) {
+            // 错 误 处 理
+        }
+        else {
+            cout << str << endl;
+        }
+    }
+
+
+    //test 3
+    {
+#if 0
+        struct GetMyStruct 
+        {
+            //https://stackoverflow.com/questions/63963961/what-is-the-correct-way-to-call-stdto-chars
+            //目前GCC只支持整形
+            void operator() (double value1)
+            {
+                std::cout << "in: " << value1 << '\n';
+                // 转 换 为 字 符 序 列：
+                char str[1000]{0};
+                char *str1 = str;
+
+                std::to_chars_result res1 = std::to_chars(str1+0, str1+10, value1);;
+                *res1.ptr = '\0'; // 添 加 末 尾 的 空 字 符
+                std::cout << "str1: " << str1 << '\n';
+                assert(res1.ec == std::errc{});
+                // 从 字 符 序 列 中 转 换 回 来：
+                double value2;
+                std::from_chars_result res2;// = std::from_chars(str1, str1+999, value2);
+                std::cout << "out: " << value2 << '\n';
+                assert(res2.ec == std::errc{});
+                assert(value1 == value2); // 应 该 绝 不 会 失 败
+            }
+        } d2str2d;
+        std::vector<double> coll{0.1, 0.3, 0.00001};
+        // 创 建 两 个 有 微 小 不 同 的 浮 点 数：
+        auto sum1 = std::accumulate(coll.begin(), coll.end(), 0.0, std::plus<>());
+        auto sum2 = std::accumulate(coll.rbegin(), coll.rend(), 0.0, std::plus<>());
+        // 看 起 来 相 同：
+        std::cout << "sum1: " << sum1 << '\n';
+        std::cout << "sum2: " << sum2 << '\n';
+        // 但 事 实 上 不 同：
+        std::cout << std::boolalpha << std::setprecision(20);
+        std::cout << "equal: " << (sum1 == sum2) << '\n'; // false!!
+        std::cout << "sum1: " << sum1 << '\n';
+        std::cout << "sum2: " << sum2 << '\n';
+        std::cout << '\n';
+        // 检 查 双 向 转 换
+        d2str2d(sum1);
+        d2str2d(sum2);
+#endif
+    }
+
+
+}
+
+
+/// Chapter 32
+void std_launder()
+{
+    struct X {
+        const int n;
+        double d;
+    };
+    X* p = new X{7, 8.8};
+    new (p) X{42, 9.9}; // 请 求 把 一 个 新 的 值 放 进p处
+    int i = p->n; // 未 定 义 行 为 （i可 能 是7也 可 能 是42）
+    auto d = p->d; // 也 是 未 定 义 行 为 （d可 能 是8.8也 可 能 是9.9）
+    cout << i << endl;
+    cout << d << endl;
+    //任何时候你都可以调用 std::launder() 来确保底层内存被重新求值：
+    int li = std::launder(p)->n; // OK，i是42
+    auto ld = std::launder(p)->d; // OK，d是9.9
+    cout << li << endl;
+    cout << ld << endl;
+    //按照标准中的说法，当对象中有常量或者引用类型的成员时，我们必须保证每次访问内存时都使用placement new 返回的值：
+    X* pp = new X{7, 8.8};
+    pp = new (pp) X{42, 9.9}; // 注 意： 把placement new的 返 回 值 赋 给p
+    int ii = pp->n; // OK，i现 在 保 证 是42
+    auto dd = pp->d; // OK，d现 在 保 证 是9.9
+    cout << ii << endl;
+    cout << dd << endl;
+}
+/// Chapter 33
+void Improvements_for_Implementing_Generic_Code()
+{
+    using namespace ns_Improvements_for_Implementing_Generic_Code;
+    //test 1 std::invoke<>()
+    {
+        std::vector<int> vals{0, 8, 15, 42, 13, -1, 0};
+        call([&vals] {
+            std::cout << "size: " << vals.size() << '\n';
+        });
+        call(print, vals);
+        call(&decltype(vals)::pop_back, vals);
+        call(print, vals);
+        call(&decltype(vals)::clear, vals);
+        call(print, vals);
+    }
+    //test 2 std::bool_constant<>
+    {
+        if constexpr(IsLargerThanInt<long>::value) {
+            cout << "IsLargerThanInt" << endl;
+        }
+    }
+    //test 3 std::void_t<>
+    {
+        if constexpr (HasVarious<std::map<int, int>>::value) {
+            cout << "HasVarious" << endl;
+        }
+    }
+
+
+}
 
 int main(int argc, char *argv[])
 {
-    // Part 1
+    // Part 1 Basic Language Features
     /// Chapter 1
     Structured_Bindings();
     /// Chapter 2
@@ -1142,7 +1705,7 @@ int main(int argc, char *argv[])
     Other_Language_Features();
     
     
-    // Part 2
+    // Part 2 Template Features
     /// Chapter 9
     Class_Template_Argument_Deduction();
     /// Chapter 10
@@ -1156,9 +1719,49 @@ int main(int argc, char *argv[])
     /// Chapter 14
     Dealing_Extended_Using_Declarations();
 
-    // Part 3
+    // Part 3 New Library Components
     /// Chapter 15
+    std_optional();
+    /// Chapter 16
+    std_variant();
+    /// Chapter 17
+    std_any();
+    /// Chapter 18
+    std_byte();
+    /// Chapter 19
+    std_string_views();
+    /// Chapter 20
+    std_filesystem();
 
+    // Part 4 Library Extensions and Modifications
+    /// Chapter 21
+    Extensions_of_Type_Traits();
+    /// Chapter 22
+    Parallel_STL_Algorithms();
+    /// Chapter 23
+    New_STL_Algorithms_in_Detail();
+    /// Chapter 24
+    Substring_and_Subsequence_Searchers();
+    /// Chapter 25
+    Other_Utility_Functions_and_Algorithms();
+    /// Chapter 26
+    Container_and_String_Extensions();
+    /// Chapter 27
+    Multi_Threading_and_Concurrency();
+    /// Chapter 28
+    Other_Small_Library_Features_and_Modifications();
+
+    // Part 5 Expert Utilities
+    /// Chapter 29
+    Polymorphic_Memory_Resources();
+    /// Chapter 30
+    new_and_delete_with_Over_Aligned_Data();
+    /// Chapter 31
+    std_to_chars_and_std_from_chars();
+    /// Chapter 32
+    std_launder();
+    /// Chapter 33
+    Improvements_for_Implementing_Generic_Code();
 
     return 0;
 }
