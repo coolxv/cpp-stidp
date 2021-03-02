@@ -110,6 +110,12 @@ void Function_Templates()
         auto b = max_ret<long double>(7.2, 4); // uses second template
         //auto c = ::max<int>(4, 7.2); // ERROR: both function templates match
     }
+    //test 10
+    {
+        std::cout << "Factorial<5>::value: " << Factorial<5>::value << std::endl;
+        std::cout << "Factorial<10>::value: " << Factorial<10>::value << std::endl;
+        std::cout << "factorial(10): " << factorial(10) << std::endl;
+    }
 }
 
 void Class_Templates()

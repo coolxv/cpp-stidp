@@ -123,6 +123,20 @@ namespace ns_Function_Templates
         return b < a ? a : b;
     }
 
+    template <int N>
+    struct Factorial{
+        static int const value = N * Factorial<N-1>::value;
+    };
+
+    template <>
+    struct Factorial<1>{
+        static int const value = 1;
+    };
+
+    constexpr int factorial (int num) 
+    {
+        return num < 2 ? 1 : num * factorial (num - 1);
+    }
 
 }
 
